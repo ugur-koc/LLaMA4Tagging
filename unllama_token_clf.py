@@ -4,8 +4,9 @@ import sys
 import json
 import numpy as np
 import evaluate
+import torch
 from datasets import load_dataset, Dataset, DatasetDict
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, BitsAndBytesConfig
 from transformers import DataCollatorForTokenClassification
 from transformers import TrainingArguments, Trainer
 from peft import get_peft_model, LoraConfig, TaskType
@@ -57,9 +58,15 @@ else:
     raise NotImplementedError
 id2label = {v: k for k, v in label2id.items()}
 label_list = list(label2id.keys()) # ds["train"].features[f"ner_tags"].feature.names
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,  # 4-bit quantization
+    bnb_4bit_quant_type='nf4',  # Normalized float 4
+    bnb_4bit_use_double_quant=True,  # Second quantization after the first
+    bnb_4bit_compute_dtype=torch.float16  # Computation type
+)
 model = UnmaskingLlamaForTokenClassification.from_pretrained(
-    model_id, num_labels=len(label2id), id2label=id2label, label2id=label2id
-).bfloat16()
+    model_id, num_labels=len(label2id), id2label=id2label, label2id=label2id, device_map="auto", quantization_config=bnb_config
+)
 peft_config = LoraConfig(task_type=TaskType.TOKEN_CLS, inference_mode=False, r=lora_r, lora_alpha=32, lora_dropout=0.1)
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
