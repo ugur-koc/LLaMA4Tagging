@@ -19,11 +19,14 @@ DED_NER_LABELS = [
     "B-AccountData.AccountName", "I-AccountData.AccountName",
     "B-AccountData.AccountPassword", "I-AccountData.AccountPassword",
     "B-AccountData.LanguagePreferences", "I-AccountData.LanguagePreferences",
+    "B-AudioVisualAndSensoryData.IoTorSensorData", "I-AudioVisualAndSensoryData.IoTorSensorData",
     "B-BackgroundCheckDetails.EmploymentHistory", "I-BackgroundCheckDetails.EmploymentHistory",
+    "B-BiometricData.DNAMatching", "I-BiometricData.DNAMatching",
     "B-ContactData.Address", "I-ContactData.Address",
     "B-ContactData.EmailAddress", "I-ContactData.EmailAddress",
     "B-ContactData.EmergencyContactDetails", "I-ContactData.EmergencyContactDetails",
     "B-ContactData.PhoneNumber", "I-ContactData.PhoneNumber",
+    "B-ContactData.phoneNumber", "I-ContactData.phoneNumber",
     "B-EducationalBackground.EducationalHistory", "I-EducationalBackground.EducationalHistory",
     "B-FinancialData.BankAccountDetails", "I-FinancialData.BankAccountDetails",
     "B-FinancialData.CardIssuer", "I-FinancialData.CardIssuer",
@@ -62,7 +65,12 @@ DED_NER_LABELS = [
     "B-PurchaseData.ProductReturnHistory", "I-PurchaseData.ProductReturnHistory",
     "B-PurchaseData.PurchaseHistory", "I-PurchaseData.PurchaseHistory",
     "B-SocialMediaData.SocialMediaAccount", "I-SocialMediaData.SocialMediaAccount",
+    "B-SpouseFamilyAndDependentDetails.DependentContactDetails", "I-SpouseFamilyAndDependentDetails.DependentContactDetails",
+    "B-SpouseFamilyAndDependentDetails.DependentName", "I-SpouseFamilyAndDependentDetails.DependentName",
+    "B-SpouseFamilyAndDependentDetails.ParentsContactDetails", "I-SpouseFamilyAndDependentDetails.ParentsContactDetails",
     "B-SpouseFamilyAndDependentDetails.ParentsName", "I-SpouseFamilyAndDependentDetails.ParentsName",
+    "B-SpouseFamilyAndDependentDetails.SpouseContactDetails", "I-SpouseFamilyAndDependentDetails.SpouseContactDetails",
+    "B-SpouseFamilyAndDependentDetails.SpouseName", "I-SpouseFamilyAndDependentDetails.SpouseName",
     "B-TechnicalData.BrowsingHistory", "I-TechnicalData.BrowsingHistory",
     "B-TechnicalData.TechnicalDiagnosticData", "I-TechnicalData.TechnicalDiagnosticData",
     "B-UsageData.ClickStream", "I-UsageData.ClickStream",
@@ -93,8 +101,8 @@ print(f'handling task {task}')
 epochs = 10
 batch_size = 8
 learning_rate = 1e-4
-max_length = 4096
-lora_r = 12
+max_length = 1024
+lora_r = 8
 if model_size == '7b':
     model_id = 'NousResearch/Llama-2-7b-hf'
 elif model_size == '13b':
@@ -120,6 +128,8 @@ elif task == 'ded':
 else:
     raise NotImplementedError
 
+
+tokenized_ds = ds
 id2label = {v: k for k, v in label2id.items()}
 label_list = list(label2id.keys()) # ds["train"].features[f"ner_tags"].feature.names
 bnb_config = BitsAndBytesConfig(
@@ -129,37 +139,11 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.float16  # Computation type
 )
 model = UnmaskingLlamaForTokenClassification.from_pretrained(
-    model_id, num_labels=len(label2id), id2label=id2label, label2id=label2id, device_map="auto", quantization_config=bnb_config
+    model_id, num_labels=len(label2id), id2label=id2label, label2id=label2id, quantization_config=bnb_config
 )
 peft_config = LoraConfig(task_type=TaskType.TOKEN_CLS, inference_mode=False, r=lora_r, lora_alpha=32, lora_dropout=0.1)
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
-
-
-def tokenize_and_align_labels(examples):
-    tokenized_inputs = tokenizer(examples["tokens"], is_split_into_words=True, padding='longest', max_length=max_length, truncation=True)
-
-    labels = []
-    for i, label in enumerate(examples[f"ner_tags"]):
-        word_ids = tokenized_inputs.word_ids(batch_index=i)  # Map tokens to their respective word.
-        previous_word_idx = None
-        label_ids = []
-        for word_idx in word_ids:  # Set the special tokens to -100.
-            if word_idx is None:
-                label_ids.append(-100)
-            elif word_idx != previous_word_idx:  # Only label the first token of a given word.
-                label_ids.append(label[word_idx])
-            else:
-                label_ids.append(-100)
-            previous_word_idx = word_idx
-        labels.append(label_ids)
-
-    tokenized_inputs["labels"] = labels
-    return tokenized_inputs
-
-
-tokenized_ds = ds.map(tokenize_and_align_labels, batched=True)
-data_collator = DataCollatorForTokenClassification(tokenizer=tokenizer)
 
 
 def compute_metrics(p):
@@ -197,6 +181,7 @@ training_args = TrainingArguments(
     push_to_hub=False,
 )
 
+data_collator = DataCollatorForTokenClassification(tokenizer=tokenizer)
 trainer = Trainer(
     model=model,
     args=training_args,
