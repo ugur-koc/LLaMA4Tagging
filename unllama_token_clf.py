@@ -93,7 +93,7 @@ print(f'handling task {task}')
 epochs = 10
 batch_size = 8
 learning_rate = 1e-4
-max_length = 64
+max_length = 4096
 lora_r = 12
 if model_size == '7b':
     model_id = 'NousResearch/Llama-2-7b-hf'
