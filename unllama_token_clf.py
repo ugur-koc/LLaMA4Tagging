@@ -13,6 +13,64 @@ from peft import get_peft_model, LoraConfig, TaskType
 
 from modeling_llama import UnmaskingLlamaForTokenClassification
 
+DED_NER_LABELS = [
+    "O", "B-None", "I-None",
+    "B-AccountData.AccountID", "I-AccountData.AccountID",
+    "B-AccountData.AccountName", "I-AccountData.AccountName",
+    "B-AccountData.AccountPassword", "I-AccountData.AccountPassword",
+    "B-AccountData.LanguagePreferences", "I-AccountData.LanguagePreferences",
+    "B-BackgroundCheckDetails.EmploymentHistory", "I-BackgroundCheckDetails.EmploymentHistory",
+    "B-ContactData.Address", "I-ContactData.Address",
+    "B-ContactData.EmailAddress", "I-ContactData.EmailAddress",
+    "B-ContactData.EmergencyContactDetails", "I-ContactData.EmergencyContactDetails",
+    "B-ContactData.PhoneNumber", "I-ContactData.PhoneNumber",
+    "B-EducationalBackground.EducationalHistory", "I-EducationalBackground.EducationalHistory",
+    "B-FinancialData.BankAccountDetails", "I-FinancialData.BankAccountDetails",
+    "B-FinancialData.CardIssuer", "I-FinancialData.CardIssuer",
+    "B-FinancialData.CardNumber", "I-FinancialData.CardNumber",
+    "B-FinancialData.InsuranceNumber", "I-FinancialData.InsuranceNumber",
+    "B-FinancialData.PaymentMode", "I-FinancialData.PaymentMode",
+    "B-FinancialData.PayrollInformation", "I-FinancialData.PayrollInformation",
+    "B-FinancialData.Salary", "I-FinancialData.Salary",
+    "B-FinancialData.TaxInformation", "I-FinancialData.TaxInformation",
+    "B-HealthData.DisabilityorSpecificCondition", "I-HealthData.DisabilityorSpecificCondition",
+    "B-HealthData.IllnessorMedicalCondition", "I-HealthData.IllnessorMedicalCondition",
+    "B-LocationData.PreciseLocation", "I-LocationData.PreciseLocation",
+    "B-NationalIdentificationNumbers.DrivingLicense", "I-NationalIdentificationNumbers.DrivingLicense",
+    "B-OnlineIdentifiers.AdvertisingIdentifiers", "I-OnlineIdentifiers.AdvertisingIdentifiers",
+    "B-OnlineIdentifiers.Cookies", "I-OnlineIdentifiers.Cookies",
+    "B-OnlineIdentifiers.DeviceIdentifier", "I-OnlineIdentifiers.DeviceIdentifier",
+    "B-OnlineIdentifiers.IPAddress", "I-OnlineIdentifiers.IPAddress",
+    "B-OnlineIdentifiers.Pixel", "I-OnlineIdentifiers.Pixel",
+    "B-PersonalCharacteristics.Age", "I-PersonalCharacteristics.Age",
+    "B-PersonalCharacteristics.Height", "I-PersonalCharacteristics.Height",
+    "B-PersonalCharacteristics.Nationality", "I-PersonalCharacteristics.Nationality",
+    "B-PersonalCharacteristics.RacialorEthnicOrigin", "I-PersonalCharacteristics.RacialorEthnicOrigin",
+    "B-PersonalCharacteristics.Religion/ReligiousBeliefs", "I-PersonalCharacteristics.Religion/ReligiousBeliefs",
+    "B-PersonalCharacteristics.Signature", "I-PersonalCharacteristics.Signature",
+    "B-PersonalCharacteristics.Weight", "I-PersonalCharacteristics.Weight",
+    "B-PersonalIdentification.Age", "I-PersonalIdentification.Age",
+    "B-PersonalIdentification.DateofBirth", "I-PersonalIdentification.DateofBirth",
+    "B-PersonalIdentification.EmployeeCode", "I-PersonalIdentification.EmployeeCode",
+    "B-PersonalIdentification.FirstName", "I-PersonalIdentification.FirstName",
+    "B-PersonalIdentification.Gender", "I-PersonalIdentification.Gender",
+    "B-PersonalIdentification.LastName", "I-PersonalIdentification.LastName",
+    "B-PersonalIdentification.Photograph", "I-PersonalIdentification.Photograph",
+    "B-ProfessionalAndEmploymentBackground.TotalExperience", "I-ProfessionalAndEmploymentBackground.TotalExperience",
+    "B-PurchaseData.OfferDetails", "I-PurchaseData.OfferDetails",
+    "B-PurchaseData.OrderDetails", "I-PurchaseData.OrderDetails",
+    "B-PurchaseData.ProductReturnHistory", "I-PurchaseData.ProductReturnHistory",
+    "B-PurchaseData.PurchaseHistory", "I-PurchaseData.PurchaseHistory",
+    "B-SocialMediaData.SocialMediaAccount", "I-SocialMediaData.SocialMediaAccount",
+    "B-SpouseFamilyAndDependentDetails.ParentsName", "I-SpouseFamilyAndDependentDetails.ParentsName",
+    "B-TechnicalData.BrowsingHistory", "I-TechnicalData.BrowsingHistory",
+    "B-TechnicalData.TechnicalDiagnosticData", "I-TechnicalData.TechnicalDiagnosticData",
+    "B-UsageData.ClickStream", "I-UsageData.ClickStream",
+    "B-UserContentData.EmailsorTextMessages", "I-UserContentData.EmailsorTextMessages",
+    "B-UserContentData.Ratings", "I-UserContentData.Ratings",
+    "B-UserContentData.Reviews", "I-UserContentData.Reviews",
+    "B-WorkplaceMonitoringData.ApplicationUsage", "I-WorkplaceMonitoringData.ApplicationUsage"
+]
 
 def load_ontonotesv5():
     ret = {}
@@ -54,8 +112,14 @@ elif task == 'conll2003':
 elif task == 'ontonotesv5':
     ds = load_ontonotesv5()
     label2id = {'O': 0, 'B-NORP': 1, 'B-PERSON': 2, 'B-WORK_OF_ART': 3, 'B-QUANTITY': 4, 'B-EVENT': 5, 'B-DATE': 6, 'B-TIME': 7, 'B-PERCENT': 8, 'B-LANGUAGE': 9, 'B-ORG': 10, 'B-CARDINAL': 11, 'B-LAW': 12, 'B-GPE': 13, 'B-PRODUCT': 14, 'B-LOC': 15, 'B-MONEY': 16, 'B-ORDINAL': 17, 'B-FAC': 18}
+elif task == 'ded':
+    ds = load_dataset("json",
+                      data_files={"train": "./data/final_labelled_data_ner.jsonl"},
+                      split="train").train_test_split(test_size=0.2)
+    label2id = {label: i for i, label in enumerate(DED_NER_LABELS)}
 else:
     raise NotImplementedError
+
 id2label = {v: k for k, v in label2id.items()}
 label_list = list(label2id.keys()) # ds["train"].features[f"ner_tags"].feature.names
 bnb_config = BitsAndBytesConfig(
