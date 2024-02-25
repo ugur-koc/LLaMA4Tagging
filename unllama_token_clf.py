@@ -99,7 +99,7 @@ task, model_size = sys.argv[1], sys.argv[2].lower()
 print(f'handling task {task}')
 
 epochs = 10
-batch_size = 8
+batch_size = 1
 learning_rate = 1e-4
 max_length = 1024
 lora_r = 8
@@ -128,8 +128,6 @@ elif task == 'ded':
 else:
     raise NotImplementedError
 
-
-tokenized_ds = ds
 id2label = {v: k for k, v in label2id.items()}
 label_list = list(label2id.keys()) # ds["train"].features[f"ner_tags"].feature.names
 bnb_config = BitsAndBytesConfig(
@@ -144,6 +142,32 @@ model = UnmaskingLlamaForTokenClassification.from_pretrained(
 peft_config = LoraConfig(task_type=TaskType.TOKEN_CLS, inference_mode=False, r=lora_r, lora_alpha=32, lora_dropout=0.1)
 model = get_peft_model(model, peft_config)
 model.print_trainable_parameters()
+
+
+def tokenize_and_align_labels(examples):
+    tokenized_inputs = tokenizer(examples["tokens"], is_split_into_words=True, padding='longest', max_length=max_length, truncation=True)
+
+    labels = []
+    for i, label in enumerate(examples[f"ner_tags"]):
+        word_ids = tokenized_inputs.word_ids(batch_index=i)  # Map tokens to their respective word.
+        previous_word_idx = None
+        label_ids = []
+        for word_idx in word_ids:  # Set the special tokens to -100.
+            if word_idx is None:
+                label_ids.append(-100)
+            elif word_idx != previous_word_idx:  # Only label the first token of a given word.
+                label_ids.append(label[word_idx])
+            else:
+                label_ids.append(-100)
+            previous_word_idx = word_idx
+        labels.append(label_ids)
+
+    tokenized_inputs["labels"] = labels
+    return tokenized_inputs
+
+
+tokenized_ds = ds.map(tokenize_and_align_labels, batched=True)
+data_collator = DataCollatorForTokenClassification(tokenizer=tokenizer)
 
 
 def compute_metrics(p):
@@ -181,7 +205,6 @@ training_args = TrainingArguments(
     push_to_hub=False,
 )
 
-data_collator = DataCollatorForTokenClassification(tokenizer=tokenizer)
 trainer = Trainer(
     model=model,
     args=training_args,
